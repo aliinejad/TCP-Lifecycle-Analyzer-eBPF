@@ -1,0 +1,83 @@
+#!/usr/bin/env bpftrace
+
+BEGIN
+{
+  printf("\n");
+  printf("=============================================================================================================\n");
+  printf(" COMMAND       |        SRC            ->          DST          | STATE        | SINCE_SYN(ms)\n");
+  printf("=============================================================================================================\n");
+}
+
+kprobe:tcp_set_state
+{
+  $sk = (struct sock *)arg0;
+  $st = arg1;
+
+  if ($sk->__sk_common.skc_family != 2) { exit(); }
+
+  $saddr = $sk->__sk_common.skc_rcv_saddr;
+  $daddr = $sk->__sk_common.skc_daddr;
+  $sport = $sk->__sk_common.skc_num;
+
+  $dport_net = $sk->__sk_common.skc_dport;
+  $dport = (($dport_net >> 8) & 0xff) | (($dport_net & 0xff) << 8);
+
+  /* SYN_SENT */
+  if ($st == 2) {
+    @syn_ts[$sk] = nsecs;
+    delete(@est_ts[$sk]);
+  }
+
+  /* ESTABLISHED */
+  if ($st == 1 && @syn_ts[$sk]) {
+    @est_ts[$sk] = nsecs;
+  }
+
+  /* Duration since SYN (ms) */
+  $dur = 0;
+  if (@syn_ts[$sk]) {
+    $dur = (nsecs - @syn_ts[$sk]) / 1000000;
+  }
+
+  /* Map state */
+  if ($st == 1)      { $state = "ESTABLISHED"; }
+  else if ($st == 2) { $state = "SYN_SENT"; }
+  else if ($st == 3) { $state = "SYN_RECV"; }
+  else if ($st == 4) { $state = "FIN_WAIT1"; }
+  else if ($st == 5) { $state = "FIN_WAIT2"; }
+  else if ($st == 6) { $state = "TIME_WAIT"; }
+  else if ($st == 7) { $state = "CLOSE"; }
+  else if ($st == 8) { $state = "CLOSE_WAIT"; }
+  else if ($st == 9) { $state = "LAST_ACK"; }
+  else if ($st == 11){ $state = "CLOSING"; }
+  else               { $state = "OTHER"; }
+
+  /* Print lifecycle line */
+  printf("%-14s | %-15s:%-5d -> %-15s:%-5d | %-12s | %10d\n",
+         comm,
+         ntop($saddr), $sport,
+         ntop($daddr), $dport,
+         $state,
+         $dur);
+
+  /* On CLOSE → print result summary */
+  if ($st == 7 && @syn_ts[$sk]) {
+
+    $handshake_ms = -1;
+    $result = "NO_EST";
+
+    if (@est_ts[$sk]) {
+      $handshake_ms = (@est_ts[$sk] - @syn_ts[$sk]) / 1000000;
+      $result = "OK";
+    }
+
+    printf("--------------------------------------------------------------------------------\n");
+    printf("RESULT | hs=%d ms | life=%d ms | %s\n",
+           $handshake_ms, $dur, $result);
+
+    printf("--------------------------------------------------------------------------------\n");
+
+    delete(@syn_ts[$sk]);
+    delete(@est_ts[$sk]);
+  }
+}
