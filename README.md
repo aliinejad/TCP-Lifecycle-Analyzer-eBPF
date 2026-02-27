@@ -1,33 +1,33 @@
 # TCP-Lifecycle-Analyzer
 
-A lightweight **bpftrace** script that traces TCP state transitions in real time by hooking into `tcp_set_state`.
+A **bpftrace** script that traces TCP state transitions in real time by hooking into `tcp_set_state`.
 
 It logs:
 
-- Process name  
-- Source → Destination (IP:Port)  
-- TCP state  
-- Time since `SYN_SENT`  
+- Process name
+- Source → Destination (IP:Port)
+- TCP state
+- Time since `SYN_SENT`
 - Final summary on `CLOSE`:
-  - Handshake duration  
-  - Total connection lifetime  
-  - Establishment result (`OK` / `NO_EST`)  
+  - Handshake duration
+  - Total connection lifetime
+  - Establishment result (`OK` / `NO_EST`)
 
 ## Requirements
 
-- Linux with eBPF support  
-- `bpftrace`  
-- Root privileges  
+- Linux with eBPF support
+- `bpftrace`
+- Root privileges
 
 ## Run
 
 ```bash
-sudo bpftrace tcp-lifecycle-analyzer.bt
+sudo bpftrace tcp_lifecycle_analyzer.bt
 ```
 
 ## Example Output
 
-```
+```text
 =============================================================================================================
  COMMAND       |        SRC            ->          DST          | STATE        | SINCE_SYN(ms)
 =============================================================================================================
@@ -41,6 +41,6 @@ RESULT | hs=23 ms | life=145 ms | OK
 
 ## Notes
 
-- IPv4 only  
-- Uses `struct sock *` as connection key  
-- Useful for debugging handshake latency and short-lived connections  
+- IPv4 only
+- Uses `struct sock *` as connection key
+- Useful for debugging handshake latency and short-lived connections
